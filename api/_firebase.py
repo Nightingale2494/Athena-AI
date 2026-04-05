@@ -3,6 +3,8 @@ from firebase_admin import credentials, firestore, auth, storage
 import os
 import json
 
+private_key = os.getenv("FIREBASE_PRIVATE_KEY").replace("\\n", "\n")
+
 def get_firebase_credentials():
     """Load Firebase credentials from environment variables."""
     if os.environ.get('FIREBASE_PROJECT_ID'):
