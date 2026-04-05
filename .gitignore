@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment variables (CRITICAL)
+.env
+.env.*
+firebase-admin.json
+*credentials.json
+*token.json
+
+# Build outputs
+build/
+dist/
+.next/
+out/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# IDE / Editors
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+
+# Testing / Local data
+coverage/
+memory/
+
+# Deployment
+.vercel/
+
+# Cache
+.cache/

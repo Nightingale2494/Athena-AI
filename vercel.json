@@ -1,0 +1,55 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
+    },
+    {
+      "src": "api/**/*.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/health",
+      "dest": "/api/health.py"
+    },
+    {
+      "src": "/api/chat",
+      "dest": "/api/chat.py"
+    },
+    {
+      "src": "/api/conversations",
+      "dest": "/api/conversations.py"
+    },
+    {
+      "src": "/api/conversations/([^/]+)/messages",
+      "dest": "/api/messages.py"
+    },
+    {
+      "src": "/api/upload/analyze",
+      "dest": "/api/upload.py"
+    },
+    {
+      "src": "/api/documents",
+      "dest": "/api/documents.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/$1"
+    }
+  ],
+  "env": {
+    "GEMINI_API_KEY": "@gemini_api_key",
+    "FIREBASE_PROJECT_ID": "@firebase_project_id",
+    "FIREBASE_PRIVATE_KEY_ID": "@firebase_private_key_id",
+    "FIREBASE_PRIVATE_KEY": "@firebase_private_key",
+    "FIREBASE_CLIENT_EMAIL": "@firebase_client_email",
+    "FIREBASE_CLIENT_ID": "@firebase_client_id",
+    "FIREBASE_STORAGE_BUCKET": "@firebase_storage_bucket"
+  }
+}
