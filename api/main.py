@@ -23,21 +23,6 @@ from fastapi import FastAPI
 @app.get("/")
 def root():
     return {"status": "Athena backend alive 🚀"}
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-@app.get("/conversations")
-def get_conversations():
-    return {"message": "conversations route working"}
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 @app.get("/api/health")
