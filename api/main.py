@@ -9,6 +9,16 @@ import uuid
 from datetime import datetime, timezone
 from google.cloud import firestore as firestore_module
 
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # later we can lock this down
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 try:
     from _firebase import db
     from _auth import verify_token
