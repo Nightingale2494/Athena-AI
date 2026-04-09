@@ -1,3 +1,4 @@
+print("MAIN FILE STARTED 🚀")
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -8,9 +9,13 @@ import uuid
 from datetime import datetime, timezone
 from google.cloud import firestore as firestore_module
 
-from _firebase import db
-from _auth import verify_token
-from _gemini import get_athena_response, analyze_document_for_bias
+try:
+    from _firebase import db
+    from _auth import verify_token
+    from _gemini import get_athena_response, analyze_document_for_bias
+    print("IMPORTS SUCCESS ✅")
+except Exception as e:
+    print("IMPORT ERROR 💀:", e)
 
 app = FastAPI(title="Athena API")
 
