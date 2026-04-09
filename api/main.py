@@ -112,7 +112,7 @@ def get_conversations(authorization: str = Header(None)):
     result.sort(key=lambda x: x["updated_at"], reverse=True)
     return result
 
-@app.get("/api/messages/{conversation_id}")
+@app.get("/api/conversations/{conversation_id}/messages")
 def get_messages(conversation_id: str, authorization: str = Header(None)):
     user = verify_token(authorization)
     user_id = user["uid"]
