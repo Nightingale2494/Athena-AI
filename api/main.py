@@ -9,8 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from google.cloud import firestore as firestore_module
 
-app = FastAPI()
-
+app = FastAPI(title="Athena API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # later we can lock this down
@@ -26,9 +25,6 @@ try:
     print("IMPORTS SUCCESS ✅")
 except Exception as e:
     print("IMPORT ERROR 💀:", e)
-
-app = FastAPI(title="Athena API")
-from fastapi import FastAPI
 
 @app.get("/")
 def root():
