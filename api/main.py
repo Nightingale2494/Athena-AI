@@ -18,6 +18,21 @@ except Exception as e:
     print("IMPORT ERROR 💀:", e)
 
 app = FastAPI(title="Athena API")
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"status": "Athena backend alive 🚀"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.get("/conversations")
+def get_conversations():
+    return {"message": "conversations route working"}
 
 app.add_middleware(
     CORSMiddleware,
