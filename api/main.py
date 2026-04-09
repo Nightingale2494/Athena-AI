@@ -23,7 +23,6 @@ from fastapi import FastAPI
 @app.get("/")
 def root():
     return {"status": "Athena backend alive 🚀"}
-)
 
 @app.get("/api/health")
 def health():
