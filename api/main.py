@@ -20,8 +20,6 @@ except Exception as e:
 app = FastAPI(title="Athena API")
 from fastapi import FastAPI
 
-app = FastAPI()
-
 @app.get("/")
 def root():
     return {"status": "Athena backend alive 🚀"}
