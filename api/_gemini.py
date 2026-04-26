@@ -121,12 +121,17 @@ def analyze_document_for_bias(document_text: str) -> dict:
     try:
         client = get_gemini_client()
         
-        prompt = f"""Analyze the following document for any potential biases related to gender, race, religion, age, or other demographic factors. 
-        
+        prompt = f"""Analyze the following document for potential biases related to gender, race, religion, age, disability, nationality, or other demographic factors.
+
+Important reliability rule:
+- If the text appears incomplete, garbled, or insufficient to assess bias, clearly say analysis is unavailable due to poor text quality.
+- In that case, DO NOT claim "no bias detected."
+
 Provide:
-1. A summary of the document
-2. Any biases detected (if none, explicitly state that)
-3. Suggestions for more neutral language if biases were found
+1. A concise summary of the document
+2. Biases detected with quoted phrases from the text when possible
+3. A safer/neutral rewrite suggestion for each biased phrase (if any)
+4. If no bias is found AND text is readable, state that explicitly with a short reason
 
 Document:
 {document_text}"""
@@ -148,6 +153,66 @@ Document:
         logger.error(f"Document analysis error: {str(e)}")
         return {
             'analysis': f"Error analyzing document: {str(e)}",
+            'error': str(e),
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+
+def get_document_chat_response(
+    filename: str,
+    document_text: str,
+    initial_analysis: str,
+    user_message: str,
+    chat_history: list = None
+) -> dict:
+    """Chat about a previously analyzed document with explicit document context."""
+    try:
+        client = get_gemini_client()
+
+        history_lines = []
+        if chat_history:
+            for msg in chat_history[-8:]:
+                role = "User" if msg.get("role") == "user" else "Athena"
+                history_lines.append(f"{role}: {msg.get('content', '')}")
+
+        history_block = "\n".join(history_lines) if history_lines else "No previous chat yet."
+
+        prompt = f"""You are helping a user analyze a specific document.
+
+Rules:
+- Use only the provided document text and the user's requests.
+- If text is missing for a section, explicitly say what is unavailable.
+- Be action-oriented and follow the user's instruction (summarize, rewrite, extract issues, etc.).
+- Keep bias analysis grounded in exact phrases from the document when possible.
+
+Document filename: {filename}
+
+Initial analysis:
+{initial_analysis}
+
+Document text:
+{document_text}
+
+Conversation so far:
+{history_block}
+
+User request:
+{user_message}
+"""
+
+        config = types.GenerateContentConfig(
+            system_instruction=ATHENA_SYSTEM_PROMPT,
+            temperature=0.5
+        )
+        response = call_gemini_with_retry(client, 'gemini-3-flash-preview', prompt, config)
+
+        return {
+            'response': response.text,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Document chat error: {str(e)}")
+        return {
+            'response': "I hit a technical issue while analyzing this document chat. Please try again.",
             'error': str(e),
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
