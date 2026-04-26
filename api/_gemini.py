@@ -151,3 +151,63 @@ Document:
             'error': str(e),
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
+
+def get_document_chat_response(
+    filename: str,
+    document_text: str,
+    initial_analysis: str,
+    user_message: str,
+    chat_history: list = None
+) -> dict:
+    """Chat about a previously analyzed document with explicit document context."""
+    try:
+        client = get_gemini_client()
+
+        history_lines = []
+        if chat_history:
+            for msg in chat_history[-8:]:
+                role = "User" if msg.get("role") == "user" else "Athena"
+                history_lines.append(f"{role}: {msg.get('content', '')}")
+
+        history_block = "\n".join(history_lines) if history_lines else "No previous chat yet."
+
+        prompt = f"""You are helping a user analyze a specific document.
+
+Rules:
+- Use only the provided document text and the user's requests.
+- If text is missing for a section, explicitly say what is unavailable.
+- Be action-oriented and follow the user's instruction (summarize, rewrite, extract issues, etc.).
+- Keep bias analysis grounded in exact phrases from the document when possible.
+
+Document filename: {filename}
+
+Initial analysis:
+{initial_analysis}
+
+Document text:
+{document_text}
+
+Conversation so far:
+{history_block}
+
+User request:
+{user_message}
+"""
+
+        config = types.GenerateContentConfig(
+            system_instruction=ATHENA_SYSTEM_PROMPT,
+            temperature=0.5
+        )
+        response = call_gemini_with_retry(client, 'gemini-3-flash-preview', prompt, config)
+
+        return {
+            'response': response.text,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Document chat error: {str(e)}")
+        return {
+            'response': "I hit a technical issue while analyzing this document chat. Please try again.",
+            'error': str(e),
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
