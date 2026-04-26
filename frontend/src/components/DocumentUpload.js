@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { UploadSimple, FileText, CheckCircle, Warning } from '@phosphor-icons/react';
+import { UploadSimple, FileText, CheckCircle, PaperPlaneRight } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -11,6 +12,10 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const DocumentUpload = ({ token }) => {
   const [file, setFile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
+  const [documentText, setDocumentText] = useState('');
+  const [docChatMessages, setDocChatMessages] = useState([]);
+  const [docChatInput, setDocChatInput] = useState('');
+  const [docChatLoading, setDocChatLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -38,6 +43,9 @@ const DocumentUpload = ({ token }) => {
       });
 
       setAnalysis(response.data);
+      setDocumentText(response.data.document_text || '');
+      setDocChatMessages([]);
+      setDocChatInput('');
       toast.success('Document analyzed successfully!');
     } catch (error) {
       console.error('Upload error:', error);
@@ -54,8 +62,44 @@ const DocumentUpload = ({ token }) => {
   const handleReset = () => {
     setFile(null);
     setAnalysis(null);
+    setDocumentText('');
+    setDocChatMessages([]);
+    setDocChatInput('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDocChatSend = async () => {
+    if (!docChatInput.trim() || docChatLoading) return;
+
+    const userMessage = docChatInput.trim();
+    setDocChatInput('');
+    const nextMessages = [...docChatMessages, { role: 'user', content: userMessage }];
+    setDocChatMessages(nextMessages);
+    setDocChatLoading(true);
+
+    try {
+      const response = await axios.post(`${API}/upload/chat`, {
+        filename: analysis?.filename,
+        analysis: analysis?.analysis,
+        document_text: documentText,
+        message: userMessage,
+        history: nextMessages
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setDocChatMessages((prev) => [...prev, { role: 'assistant', content: response.data.response }]);
+    } catch (error) {
+      console.error('Document chat error:', error);
+      toast.error(
+        error.response?.data?.detail ||
+        error.response?.data?.error ||
+        'Failed to chat about this document'
+      );
+    } finally {
+      setDocChatLoading(false);
     }
   };
 
@@ -279,6 +323,80 @@ const DocumentUpload = ({ token }) => {
                 >
                   Analyze Another Document
                 </Button>
+
+                <div
+                  className="mt-6 p-4 rounded-md border"
+                  style={{
+                    backgroundColor: '#0B101A',
+                    borderColor: 'rgba(255, 255, 255, 0.1)'
+                  }}
+                >
+                  <p
+                    className="text-xs uppercase tracking-[0.2em] mb-3"
+                    style={{
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      color: '#475569'
+                    }}
+                  >
+                    Ask Athena About This Document
+                  </p>
+
+                  <div className="space-y-3 max-h-72 overflow-y-auto mb-3 pr-1">
+                    {docChatMessages.length === 0 ? (
+                      <p className="text-sm" style={{ color: '#94A3B8' }}>
+                        Ask things like: "Rewrite this to remove biased phrasing", "Find loaded words", or "Summarize section 2."
+                      </p>
+                    ) : (
+                      docChatMessages.map((msg, idx) => (
+                        <div
+                          key={`${msg.role}-${idx}`}
+                          className={`p-3 rounded-md ${msg.role === 'user' ? 'ml-8' : 'mr-8'}`}
+                          style={{
+                            backgroundColor: msg.role === 'user' ? 'rgba(212, 175, 55, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+                            borderLeft: msg.role === 'user' ? '2px solid #D4AF37' : '2px solid rgba(255, 255, 255, 0.1)'
+                          }}
+                        >
+                          <p className="text-sm whitespace-pre-wrap" style={{ color: '#F8FAFC' }}>
+                            {msg.content}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 items-end">
+                    <Textarea
+                      value={docChatInput}
+                      onChange={(e) => setDocChatInput(e.target.value)}
+                      placeholder="Tell Athena what you want from this document..."
+                      rows={2}
+                      disabled={docChatLoading}
+                      className="resize-none bg-transparent border"
+                      style={{
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                        color: '#F8FAFC'
+                      }}
+                    />
+                    <Button
+                      onClick={handleDocChatSend}
+                      disabled={docChatLoading || !docChatInput.trim()}
+                      className="px-4"
+                      style={{
+                        backgroundColor: docChatLoading || !docChatInput.trim() ? '#475569' : '#D4AF37',
+                        color: '#030712'
+                      }}
+                    >
+                      {docChatLoading ? (
+                        <div
+                          className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                          style={{ borderColor: '#030712', borderTopColor: 'transparent' }}
+                        />
+                      ) : (
+                        <PaperPlaneRight size={18} weight="bold" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </motion.div>
             )}
           </motion.div>
