@@ -9,6 +9,24 @@ import uuid
 from datetime import datetime, timezone
 from google.cloud import firestore as firestore_module
 
+def _is_readable_text(text: str) -> bool:
+    """Heuristic check to avoid running analysis on mostly-binary/garbled content."""
+    if not text:
+        return False
+
+    stripped = text.strip()
+    if len(stripped) < 120:
+        return False
+
+    printable_chars = sum(1 for c in stripped if c.isprintable())
+    printable_ratio = printable_chars / max(len(stripped), 1)
+
+    alpha_chars = sum(1 for c in stripped if c.isalpha())
+    alpha_ratio = alpha_chars / max(len(stripped), 1)
+
+    word_count = len([w for w in stripped.split() if any(ch.isalpha() for ch in w)])
+    return printable_ratio > 0.85 and alpha_ratio > 0.35 and word_count >= 20
+
 app = FastAPI(title="Athena API")
 app.add_middleware(
     CORSMiddleware,
@@ -170,8 +188,13 @@ async def upload_document(file: UploadFile = File(...), authorization: str = Hea
     text_content = file_content.decode("utf-8", errors="ignore").strip()
     if not text_content:
         text_content = file_content.decode("latin-1", errors="ignore").strip()
-    if not text_content:
-        return JSONResponse(status_code=400, content={"error": "Could not extract readable text from this file"})
+    if not _is_readable_text(text_content):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "I couldn't extract readable text from this file format. Please upload a text-readable file (for example .txt or a copy/pasteable PDF) and try again."
+            }
+        )
 
     analysis_result = analyze_document_for_bias(text_content)
 

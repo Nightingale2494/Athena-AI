@@ -121,12 +121,17 @@ def analyze_document_for_bias(document_text: str) -> dict:
     try:
         client = get_gemini_client()
         
-        prompt = f"""Analyze the following document for any potential biases related to gender, race, religion, age, or other demographic factors. 
-        
+        prompt = f"""Analyze the following document for potential biases related to gender, race, religion, age, disability, nationality, or other demographic factors.
+
+Important reliability rule:
+- If the text appears incomplete, garbled, or insufficient to assess bias, clearly say analysis is unavailable due to poor text quality.
+- In that case, DO NOT claim "no bias detected."
+
 Provide:
-1. A summary of the document
-2. Any biases detected (if none, explicitly state that)
-3. Suggestions for more neutral language if biases were found
+1. A concise summary of the document
+2. Biases detected with quoted phrases from the text when possible
+3. A safer/neutral rewrite suggestion for each biased phrase (if any)
+4. If no bias is found AND text is readable, state that explicitly with a short reason
 
 Document:
 {document_text}"""
