@@ -112,6 +112,24 @@ def _extract_text_for_analysis(file_content: bytes, filename: str, content_type:
         text_content = file_content.decode("latin-1", errors="ignore").strip()
     return text_content
 
+def _is_readable_text(text: str) -> bool:
+    """Heuristic check to avoid running analysis on mostly-binary/garbled content."""
+    if not text:
+        return False
+
+    stripped = text.strip()
+    if len(stripped) < 120:
+        return False
+
+    printable_chars = sum(1 for c in stripped if c.isprintable())
+    printable_ratio = printable_chars / max(len(stripped), 1)
+
+    alpha_chars = sum(1 for c in stripped if c.isalpha())
+    alpha_ratio = alpha_chars / max(len(stripped), 1)
+
+    word_count = len([w for w in stripped.split() if any(ch.isalpha() for ch in w)])
+    return printable_ratio > 0.85 and alpha_ratio > 0.35 and word_count >= 20
+
 app = FastAPI(title="Athena API")
 app.add_middleware(
     CORSMiddleware,
