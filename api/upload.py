@@ -32,7 +32,7 @@ class handler(BaseHTTPRequestHandler):
             # Parse multipart form data
             content_type = self.headers.get('Content-Type')
             if not content_type or 'multipart/form-data' not in content_type:
-                raise Exception("Content-Type must be multipart/form-data")
+                raise ValueError("Content-Type must be multipart/form-data")
             
             # Read file content
             form = cgi.FieldStorage(
@@ -45,20 +45,18 @@ class handler(BaseHTTPRequestHandler):
             )
             
             if 'file' not in form:
-                raise Exception("No file uploaded")
+                raise ValueError("No file uploaded")
             
             file_item = form['file']
             filename = file_item.filename
-            
-            if not filename.endswith('.txt'):
-                raise Exception("Only .txt files supported")
-            
+
             # Read file content
             file_content = file_item.file.read()
-            try:
-                text_content = file_content.decode('utf-8')
-            except:
-                text_content = file_content.decode('latin-1')
+            text_content = file_content.decode('utf-8', errors='ignore').strip()
+            if not text_content:
+                text_content = file_content.decode('latin-1', errors='ignore').strip()
+            if not text_content:
+                raise ValueError("Could not extract readable text from this file")
             
             # Analyze document
             analysis_result = analyze_document_for_bias(text_content)
@@ -88,7 +86,7 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(response).encode())
             
         except Exception as e:
-            self.send_response(500)
+            self.send_response(400 if isinstance(e, ValueError) else 500)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
