@@ -17,10 +17,6 @@ const DocumentUpload = ({ token }) => {
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
-      if (!selectedFile.name.endsWith('.txt')) {
-        toast.error('Only .txt files are supported');
-        return;
-      }
       setFile(selectedFile);
       setAnalysis(null);
     }
@@ -34,7 +30,7 @@ const DocumentUpload = ({ token }) => {
     formData.append('file', file);
 
     try {
-      const response = await axios.post(`${API}/upload/analyze`, formData, {
+      const response = await axios.post(`${API}/upload`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'
@@ -45,7 +41,11 @@ const DocumentUpload = ({ token }) => {
       toast.success('Document analyzed successfully!');
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to analyze document');
+      toast.error(
+        error.response?.data?.detail ||
+        error.response?.data?.error ||
+        'Failed to analyze document'
+      );
     } finally {
       setLoading(false);
     }
@@ -95,7 +95,7 @@ const DocumentUpload = ({ token }) => {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".txt"
+                  accept="*/*"
                   onChange={handleFileChange}
                   className="hidden"
                   id="file-upload"
@@ -123,7 +123,7 @@ const DocumentUpload = ({ token }) => {
                         color: '#475569'
                       }}
                     >
-                      .txt files only
+                      all file types supported
                     </p>
                   </label>
                 ) : (

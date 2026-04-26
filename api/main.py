@@ -161,18 +161,17 @@ def get_documents(authorization: str = Header(None)):
     return result
 
 @app.post("/api/upload")
+@app.post("/api/upload/analyze")
 async def upload_document(file: UploadFile = File(...), authorization: str = Header(None)):
     user = verify_token(authorization)
     user_id = user["uid"]
 
-    if not file.filename.endswith(".txt"):
-        return JSONResponse(status_code=400, content={"error": "Only .txt files supported"})
-
     file_content = await file.read()
-    try:
-        text_content = file_content.decode("utf-8")
-    except Exception:
-        text_content = file_content.decode("latin-1")
+    text_content = file_content.decode("utf-8", errors="ignore").strip()
+    if not text_content:
+        text_content = file_content.decode("latin-1", errors="ignore").strip()
+    if not text_content:
+        return JSONResponse(status_code=400, content={"error": "Could not extract readable text from this file"})
 
     analysis_result = analyze_document_for_bias(text_content)
 
