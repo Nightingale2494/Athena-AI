@@ -8,6 +8,109 @@ from fastapi.responses import JSONResponse
 import uuid
 from datetime import datetime, timezone
 from google.cloud import firestore as firestore_module
+import csv
+import io
+import os
+import zipfile
+import xml.etree.ElementTree as ET
+
+def _is_readable_text(text: str) -> bool:
+    """Heuristic check to avoid running analysis on mostly-binary/garbled content."""
+    if not text:
+        return False
+
+    stripped = text.strip()
+    if len(stripped) < 120:
+        return False
+
+    printable_chars = sum(1 for c in stripped if c.isprintable())
+    printable_ratio = printable_chars / max(len(stripped), 1)
+
+    alpha_chars = sum(1 for c in stripped if c.isalpha())
+    alpha_ratio = alpha_chars / max(len(stripped), 1)
+
+    word_count = len([w for w in stripped.split() if any(ch.isalpha() for ch in w)])
+    return printable_ratio > 0.85 and alpha_ratio > 0.35 and word_count >= 20
+
+def _extract_csv_text(file_content: bytes) -> str:
+    decoded = file_content.decode("utf-8", errors="ignore")
+    if not decoded.strip():
+        decoded = file_content.decode("latin-1", errors="ignore")
+    if not decoded.strip():
+        return ""
+
+    reader = csv.reader(io.StringIO(decoded))
+    lines = []
+    for row in reader:
+        cleaned = [str(cell).strip() for cell in row if str(cell).strip()]
+        if cleaned:
+            lines.append(" | ".join(cleaned))
+    return "\n".join(lines)
+
+def _extract_xlsx_text(file_content: bytes) -> str:
+    """Lightweight XLSX text extraction without third-party dependencies."""
+    ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    shared_strings = []
+
+    with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
+        if "xl/sharedStrings.xml" in zf.namelist():
+            root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+            for si in root.findall("s:si", ns):
+                parts = [node.text or "" for node in si.findall(".//s:t", ns)]
+                shared_strings.append("".join(parts))
+
+        sheet_files = sorted(
+            [name for name in zf.namelist() if name.startswith("xl/worksheets/sheet") and name.endswith(".xml")]
+        )
+
+        lines = []
+        for sheet_file in sheet_files:
+            sheet_root = ET.fromstring(zf.read(sheet_file))
+            sheet_name = os.path.basename(sheet_file).replace(".xml", "")
+            lines.append(f"[{sheet_name}]")
+
+            for row in sheet_root.findall(".//s:row", ns):
+                row_values = []
+                for cell in row.findall("s:c", ns):
+                    cell_type = cell.attrib.get("t")
+                    value_node = cell.find("s:v", ns)
+                    if value_node is None or value_node.text is None:
+                        continue
+
+                    value = value_node.text
+                    if cell_type == "s":
+                        try:
+                            value = shared_strings[int(value)]
+                        except Exception:
+                            pass
+                    if str(value).strip():
+                        row_values.append(str(value).strip())
+                if row_values:
+                    lines.append(" | ".join(row_values))
+
+        return "\n".join(lines)
+
+def _extract_text_for_analysis(file_content: bytes, filename: str, content_type: str = "") -> str:
+    ext = os.path.splitext((filename or "").lower())[1]
+    content_type = (content_type or "").lower()
+
+    if ext in [".csv", ".tsv"] or "csv" in content_type:
+        try:
+            return _extract_csv_text(file_content)
+        except Exception:
+            return ""
+
+    if ext == ".xlsx" or "spreadsheetml" in content_type:
+        try:
+            return _extract_xlsx_text(file_content)
+        except Exception:
+            return ""
+
+    # Generic plain-text fallback
+    text_content = file_content.decode("utf-8", errors="ignore").strip()
+    if not text_content:
+        text_content = file_content.decode("latin-1", errors="ignore").strip()
+    return text_content
 
 def _is_readable_text(text: str) -> bool:
     """Heuristic check to avoid running analysis on mostly-binary/garbled content."""
@@ -185,14 +288,12 @@ async def upload_document(file: UploadFile = File(...), authorization: str = Hea
     user_id = user["uid"]
 
     file_content = await file.read()
-    text_content = file_content.decode("utf-8", errors="ignore").strip()
-    if not text_content:
-        text_content = file_content.decode("latin-1", errors="ignore").strip()
+    text_content = _extract_text_for_analysis(file_content, file.filename, file.content_type)
     if not _is_readable_text(text_content):
         return JSONResponse(
             status_code=400,
             content={
-                "error": "I couldn't extract readable text from this file format. Please upload a text-readable file (for example .txt or a copy/pasteable PDF) and try again."
+                "error": "I couldn't extract readable text from this file. Spreadsheets are supported for .csv, .tsv, and .xlsx files. For other formats, upload a text-readable file and try again."
             }
         )
 
