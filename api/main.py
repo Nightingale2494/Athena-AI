@@ -9,6 +9,24 @@ import uuid
 from datetime import datetime, timezone
 from google.cloud import firestore as firestore_module
 
+def _is_readable_text(text: str) -> bool:
+    """Heuristic check to avoid running analysis on mostly-binary/garbled content."""
+    if not text:
+        return False
+
+    stripped = text.strip()
+    if len(stripped) < 120:
+        return False
+
+    printable_chars = sum(1 for c in stripped if c.isprintable())
+    printable_ratio = printable_chars / max(len(stripped), 1)
+
+    alpha_chars = sum(1 for c in stripped if c.isalpha())
+    alpha_ratio = alpha_chars / max(len(stripped), 1)
+
+    word_count = len([w for w in stripped.split() if any(ch.isalpha() for ch in w)])
+    return printable_ratio > 0.85 and alpha_ratio > 0.35 and word_count >= 20
+
 app = FastAPI(title="Athena API")
 app.add_middleware(
     CORSMiddleware,
@@ -21,7 +39,7 @@ app.add_middleware(
 try:
     from _firebase import db
     from _auth import verify_token
-    from _gemini import get_athena_response, analyze_document_for_bias
+    from _gemini import get_athena_response, analyze_document_for_bias, get_document_chat_response
     print("IMPORTS SUCCESS ✅")
 except Exception as e:
     print("IMPORT ERROR 💀:", e)
@@ -170,8 +188,13 @@ async def upload_document(file: UploadFile = File(...), authorization: str = Hea
     text_content = file_content.decode("utf-8", errors="ignore").strip()
     if not text_content:
         text_content = file_content.decode("latin-1", errors="ignore").strip()
-    if not text_content:
-        return JSONResponse(status_code=400, content={"error": "Could not extract readable text from this file"})
+    if not _is_readable_text(text_content):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "I couldn't extract readable text from this file format. Please upload a text-readable file (for example .txt or a copy/pasteable PDF) and try again."
+            }
+        )
 
     analysis_result = analyze_document_for_bias(text_content)
 
@@ -187,5 +210,35 @@ async def upload_document(file: UploadFile = File(...), authorization: str = Hea
         "id": doc_id,
         "filename": file.filename,
         "analysis": analysis_result["analysis"],
+        "document_text": text_content[:12000],
         "timestamp": analysis_result["timestamp"],
+    }
+
+@app.post("/api/upload/chat")
+async def chat_about_document(request: Request, authorization: str = Header(None)):
+    verify_token(authorization)
+    data = await request.json()
+
+    filename = data.get("filename", "Uploaded document")
+    document_text = (data.get("document_text") or "").strip()
+    analysis = data.get("analysis") or ""
+    message = (data.get("message") or "").strip()
+    history = data.get("history") or []
+
+    if not document_text:
+        return JSONResponse(status_code=400, content={"error": "No document text context found. Re-upload the file and try again."})
+    if not message:
+        return JSONResponse(status_code=400, content={"error": "Message is required."})
+
+    result = get_document_chat_response(
+        filename=filename,
+        document_text=document_text,
+        initial_analysis=analysis,
+        user_message=message,
+        chat_history=history,
+    )
+
+    return {
+        "response": result["response"],
+        "timestamp": result["timestamp"],
     }
