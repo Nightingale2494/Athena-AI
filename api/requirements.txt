@@ -6,3 +6,7 @@ python-dotenv
 firebase-admin
 google-cloud-firestore
 python-multipart
+langchain-core
+langchain-google-genai
+langgraph
+pydantic

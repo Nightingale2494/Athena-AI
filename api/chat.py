@@ -60,7 +60,7 @@ class handler(BaseHTTPRequestHandler):
                 })
             
             # Get Athena's response
-            athena_result = get_athena_response(message, conversation_history)
+            athena_result = get_athena_response(message, conversation_history, conversation_id, user_id)
             
             # Save user message
             user_message_id = str(uuid.uuid4())

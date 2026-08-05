@@ -180,7 +180,7 @@ async def chat(request: Request, authorization: str = Header(None)):
             "message_count": 0,
         })
 
-    athena_result = get_athena_response(message, conversation_history)
+    athena_result = get_athena_response(message, conversation_history, conversation_id, user_id)
 
     user_message_id = str(uuid.uuid4())
     conversation_ref.collection("messages").document(user_message_id).set({
@@ -297,7 +297,7 @@ async def upload_document(file: UploadFile = File(...), authorization: str = Hea
             }
         )
 
-    analysis_result = analyze_document_for_bias(text_content)
+    analysis_result = analyze_document_for_bias(text_content, file.filename, user_id)
 
     doc_id = str(uuid.uuid4())
     db.collection("document_analyses").document(doc_id).set({
@@ -317,7 +317,8 @@ async def upload_document(file: UploadFile = File(...), authorization: str = Hea
 
 @app.post("/api/upload/chat")
 async def chat_about_document(request: Request, authorization: str = Header(None)):
-    verify_token(authorization)
+    user = verify_token(authorization)
+    user_id = user["uid"]
     data = await request.json()
 
     filename = data.get("filename", "Uploaded document")
@@ -337,6 +338,7 @@ async def chat_about_document(request: Request, authorization: str = Header(None
         initial_analysis=analysis,
         user_message=message,
         chat_history=history,
+        user_id=user_id
     )
 
     return {

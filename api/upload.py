@@ -59,7 +59,7 @@ class handler(BaseHTTPRequestHandler):
                 raise ValueError("Could not extract readable text from this file")
             
             # Analyze document
-            analysis_result = analyze_document_for_bias(text_content)
+            analysis_result = analyze_document_for_bias(text_content, filename, user_id)
             
             # Save to Firestore
             doc_id = str(uuid.uuid4())

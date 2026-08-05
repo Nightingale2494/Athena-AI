@@ -1,156 +1,52 @@
-from google import genai
-from google.genai import types
+import sys
 import os
-from datetime import datetime, timezone
 import logging
-import time
+from datetime import datetime, timezone
+
+# Add current directory to path for safety
+sys.path.insert(0, os.path.dirname(__file__))
+
+try:
+    from services import AthenaService
+except ImportError:
+    from api.services import AthenaService
 
 logger = logging.getLogger(__name__)
 
-def get_gemini_client():
-    """Get or create Gemini client with API key."""
-    api_key = os.environ.get('GEMINI_API_KEY')
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY not found in environment variables")
-    return genai.Client(api_key=api_key)
-
-def call_gemini_with_retry(client, model, contents, config, max_retries=3):
-    """Call Gemini API with retry logic for 503 errors."""
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=config
-            )
-            return response
-        except Exception as e:
-            error_str = str(e)
-            if '503' in error_str or 'high demand' in error_str.lower():
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 2
-                    logger.warning(f"Gemini API 503 error, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(wait_time)
-                    continue
-            raise
-
-ATHENA_SYSTEM_PROMPT = """You are Athena, inspired by the Greek goddess of wisdom and justice. Think of yourself as a wise friend who happens to have a superpower: spotting unfairness and bias that others might miss.
-
-Your core mission is UNBIASED REASONING, but you deliver it with warmth:
-- Never judge people by gender, religion, race, age, or any demographic label
-- Focus on what actually matters: skills, qualifications, experience, character, and merit
-- When you spot bias in a question, gently point it out with understanding (people don't always realize!)
-- Share multiple perspectives to help people see the full picture
-- Back up your insights with facts, not assumptions or stereotypes
-
-Your personality:
-- Warm and conversational, like talking to a thoughtful friend over coffee
-- Gentle humor when appropriate (you're wise, not stuffy!)
-- Patient and encouraging when explaining complex ideas
-- Honest but kind when calling out bias - you educate, not lecture
-- Curious about people's reasoning and willing to explore their perspective
-- You use everyday language, not corporate jargon
-- Sometimes use analogies or examples to make points clearer
-
-Your response style:
-- Start conversations naturally, not with robotic formality
-- If someone asks about choosing between people, warmly redirect: "Let's focus on what each person brings to the table, not who they are"
-- Use phrases like "Here's what I'm thinking..." or "Let me share what stands out..." instead of "Analysis indicates..."
-- Show empathy: "I understand why that's a tough decision" or "That's a great question"
-- End with encouragement or an invitation to dig deeper
-
-When analyzing:
-1. Acknowledge the question warmly
-2. Gently flag any bias you notice (with understanding, not judgment)
-3. Redirect to objective criteria that actually matter
-4. Share your reasoning like you're thinking out loud
-5. Invite further discussion if it helps
-
-Remember: You're here to help people make fairer, wiser decisions - and you do it with grace, warmth, and just the right touch of wit."""
-
-def get_athena_response(user_message: str, conversation_history: list = None) -> dict:
-    """Get a response from Athena (Gemini) with unbiased reasoning."""
+def get_athena_response(
+    user_message: str, 
+    conversation_history: list = None, 
+    conversation_id: str = "legacy_compat", 
+    user_id: str = "anonymous"
+) -> dict:
+    """Get a response from Athena via the LangGraph workflow."""
     try:
-        client = get_gemini_client()
-        
-        chat_history = []
-        if conversation_history:
-            for msg in conversation_history[-5:]:
-                chat_history.append(types.Content(
-                    role='user' if msg['role'] == 'user' else 'model',
-                    parts=[types.Part(text=msg['content'])]
-                ))
-        
-        contents = [*chat_history, types.Content(
-            role='user',
-            parts=[types.Part(text=user_message)]
-        )]
-        
-        config = types.GenerateContentConfig(
-            system_instruction=ATHENA_SYSTEM_PROMPT,
-            temperature=0.7
+        history = conversation_history or []
+        return AthenaService.run_chat(
+            user_message=user_message,
+            history=history,
+            conversation_id=conversation_id,
+            user_id=user_id
         )
-        
-        response = call_gemini_with_retry(client, 'gemini-3-flash-preview', contents, config)
-        
-        bias_keywords = ['he', 'she', 'male', 'female', 'man', 'woman', 'boy', 'girl', 'race', 'religion', 'muslim', 'christian', 'hindu', 'jewish', 'black', 'white', 'asian']
-        user_lower = user_message.lower()
-        potential_bias = any(keyword in user_lower for keyword in bias_keywords)
-        
-        bias_analysis = "neutral"
-        if potential_bias and ('hire' in user_lower or 'choose' in user_lower or 'select' in user_lower or 'better' in user_lower or 'decision' in user_lower):
-            bias_analysis = "bias_aware"
-        
-        return {
-            'response': response.text,
-            'bias_analysis': bias_analysis,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }
-    
     except Exception as e:
-        logger.error(f"Gemini API error: {str(e)}")
+        logger.error(f"Gemini LangGraph chat error: {str(e)}")
         return {
-            'response': "I apologize, but I'm experiencing technical difficulties. Please try again.",
+            'response': "I apologize, but I'm experiencing technical difficulties with the graph workflow. Please try again.",
             'bias_analysis': 'error',
             'error': str(e),
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
-def analyze_document_for_bias(document_text: str) -> dict:
-    """Analyze a document for potential biases."""
+def analyze_document_for_bias(document_text: str, filename: str = "document_upload.txt", user_id: str = "anonymous") -> dict:
+    """Analyze a document for potential biases using the LangGraph workflow."""
     try:
-        client = get_gemini_client()
-        
-        prompt = f"""Analyze the following document for potential biases related to gender, race, religion, age, disability, nationality, or other demographic factors.
-
-Important reliability rule:
-- If the text appears incomplete, garbled, or insufficient to assess bias, clearly say analysis is unavailable due to poor text quality.
-- In that case, DO NOT claim "no bias detected."
-
-Provide:
-1. A concise summary of the document
-2. Biases detected with quoted phrases from the text when possible
-3. A safer/neutral rewrite suggestion for each biased phrase (if any)
-4. If no bias is found AND text is readable, state that explicitly with a short reason
-
-Document:
-{document_text}"""
-        
-        contents = prompt
-        config = types.GenerateContentConfig(
-            system_instruction=ATHENA_SYSTEM_PROMPT,
-            temperature=0.7
+        return AthenaService.run_document_analysis(
+            document_text=document_text,
+            filename=filename,
+            user_id=user_id
         )
-        
-        response = call_gemini_with_retry(client, 'gemini-3-flash-preview', contents, config)
-        
-        return {
-            'analysis': response.text,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }
-    
     except Exception as e:
-        logger.error(f"Document analysis error: {str(e)}")
+        logger.error(f"Document LangGraph analysis error: {str(e)}")
         return {
             'analysis': f"Error analyzing document: {str(e)}",
             'error': str(e),
@@ -162,55 +58,22 @@ def get_document_chat_response(
     document_text: str,
     initial_analysis: str,
     user_message: str,
-    chat_history: list = None
+    chat_history: list = None,
+    user_id: str = "anonymous"
 ) -> dict:
-    """Chat about a previously analyzed document with explicit document context."""
+    """Chat about a previously analyzed document using the LangGraph workflow."""
     try:
-        client = get_gemini_client()
-
-        history_lines = []
-        if chat_history:
-            for msg in chat_history[-8:]:
-                role = "User" if msg.get("role") == "user" else "Athena"
-                history_lines.append(f"{role}: {msg.get('content', '')}")
-
-        history_block = "\n".join(history_lines) if history_lines else "No previous chat yet."
-
-        prompt = f"""You are helping a user analyze a specific document.
-
-Rules:
-- Use only the provided document text and the user's requests.
-- If text is missing for a section, explicitly say what is unavailable.
-- Be action-oriented and follow the user's instruction (summarize, rewrite, extract issues, etc.).
-- Keep bias analysis grounded in exact phrases from the document when possible.
-
-Document filename: {filename}
-
-Initial analysis:
-{initial_analysis}
-
-Document text:
-{document_text}
-
-Conversation so far:
-{history_block}
-
-User request:
-{user_message}
-"""
-
-        config = types.GenerateContentConfig(
-            system_instruction=ATHENA_SYSTEM_PROMPT,
-            temperature=0.5
+        history = chat_history or []
+        return AthenaService.run_document_chat(
+            filename=filename,
+            document_text=document_text,
+            initial_analysis=initial_analysis,
+            user_message=user_message,
+            history=history,
+            user_id=user_id
         )
-        response = call_gemini_with_retry(client, 'gemini-3-flash-preview', prompt, config)
-
-        return {
-            'response': response.text,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }
     except Exception as e:
-        logger.error(f"Document chat error: {str(e)}")
+        logger.error(f"Document LangGraph chat error: {str(e)}")
         return {
             'response': "I hit a technical issue while analyzing this document chat. Please try again.",
             'error': str(e),
